@@ -13,7 +13,7 @@ export default {
 		const url = new URL(修正请求URL(request.url));
 		const UA = request.headers.get('User-Agent') || 'null';
 		const upgradeHeader = (request.headers.get('Upgrade') || '').toLowerCase(), contentType = (request.headers.get('content-type') || '').toLowerCase();
-		const 管理员密码 = env.ADMIN || env.admin || env.PASSWORD || env.password || env.pswd || env.TOKEN || env.KEY || env.UUID || env.uuid;
+		const 管理员密码 = env.ADMIN || env.admin || '';
 		const 加密秘钥 = env.KEY || '勿动此默认密钥，有需求请自行通过添加变量KEY进行修改';
 		const userIDMD5 = await MD5MD5(管理员密码 + 加密秘钥);
 		const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
@@ -88,7 +88,7 @@ export default {
 						return new Response(读取日志内容, { status: 200, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
 					} else if (区分大小写访问路径 === 'admin/getCloudflareUsage') {// 查询请求量
 						try {
-							const Usage_JSON = await getCloudflareUsage(url.searchParams.get('Email'), url.searchParams.get('GlobalAPIKey'), url.searchParams.get('AccountID'), url.searchParams.get('APIToken'));
+							const Usage_JSON = await 查询已保存CloudflareUsage(env);
 							return new Response(JSON.stringify(Usage_JSON, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } });
 						} catch (err) {
 							const errorResponse = { msg: '查询请求量失败，失败原因：' + err.message, error: err.message };
@@ -3393,6 +3393,25 @@ async function getCloudflareUsage(Email, GlobalAPIKey, AccountID, APIToken) {
 		console.error('获取使用量错误:', error.message);
 		return { success: false, pages: 0, workers: 0, total: 0, max: 100000 };
 	}
+}
+
+async function 查询已保存CloudflareUsage(env) {
+	if (!env?.KV?.get) return { success: false, pages: 0, workers: 0, total: 0, max: 100000 };
+	const CF_TXT = await env.KV.get('cf.json');
+	if (!CF_TXT) return { success: false, pages: 0, workers: 0, total: 0, max: 100000 };
+	let CF_JSON;
+	try {
+		CF_JSON = JSON.parse(CF_TXT);
+	} catch (error) {
+		throw new Error('cf.json 配置格式无效');
+	}
+	if (CF_JSON?.UsageAPI) {
+		const 安全UsageAPI = 校验外部资源URL(CF_JSON.UsageAPI);
+		const response = await fetch(安全UsageAPI.href);
+		if (!response.ok) throw new Error(`UsageAPI 查询失败: ${response.status}`);
+		return await response.json();
+	}
+	return await getCloudflareUsage(CF_JSON?.Email, CF_JSON?.GlobalAPIKey, CF_JSON?.AccountID, CF_JSON?.APIToken);
 }
 
 function sha224(s) {
